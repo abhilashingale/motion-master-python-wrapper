@@ -55,6 +55,31 @@ STORE_PARAMS_INDEX    = "0x1010"
 STORE_PARAMS_SUBINDEX = "0x01"
 STORE_PARAMS_VALUE    = 0x65766173  # ASCII 'e','v','a','s'
 
+# CiA 402 homing objects
+HOMING_METHOD_INDEX    = "0x6098"
+HOMING_METHOD_SUBINDEX = "0x00"
+HOMING_METHOD_VALUE    = 37
+
+MODES_OF_OP_INDEX      = "0x6060"
+MODES_OF_OP_SUBINDEX   = "0x00"
+HOMING_MODE_VALUE      = 6          # CiA 402 homing mode
+
+CONTROLWORD_INDEX      = "0x6040"
+CONTROLWORD_SUBINDEX   = "0x00"
+CW_ENABLE_OP           = 0x000F     # enable operation (bits 0-3)
+CW_START_HOMING        = 0x001F     # enable op + start homing (bit 4)
+
+STATUSWORD_INDEX       = "0x6041"
+STATUSWORD_SUBINDEX    = "0x00"
+SW_HOMING_ATTAINED     = 1 << 12
+SW_HOMING_ERROR        = 1 << 13
+
+POS_ACTUAL_INDEX       = "0x6067"   # position actual value
+POS_ACTUAL_SUBINDEX    = "0x00"
+
+HOMING_TIMEOUT_S       = 10.0
+POS_NEAR_ZERO_COUNTS   = ENCODER_RESOLUTION // 100  # within 1% of full revolution
+
 
 # ---------------------------------------------------------------------------
 
@@ -117,6 +142,74 @@ def calculate_offset(raw: int) -> int:
         return raw + half
     else:
         return raw - half
+
+
+def perform_homing(device) -> bool:
+    """Run homing method 37 and verify position actual value is near zero."""
+    try:
+        device.download_parameter(HOMING_METHOD_INDEX, HOMING_METHOD_SUBINDEX, HOMING_METHOD_VALUE)
+        print(f"  Homing method set to {HOMING_METHOD_VALUE}.")
+    except MotionMasterError as exc:
+        print(f"  ERROR setting homing method: {exc}", file=sys.stderr)
+        return False
+
+    try:
+        device.download_parameter(MODES_OF_OP_INDEX, MODES_OF_OP_SUBINDEX, HOMING_MODE_VALUE)
+        sleep(0.1)
+        print("  Modes of operation set to homing (6).")
+    except MotionMasterError as exc:
+        print(f"  ERROR setting modes of operation: {exc}", file=sys.stderr)
+        return False
+
+    try:
+        device.download_parameter(CONTROLWORD_INDEX, CONTROLWORD_SUBINDEX, CW_START_HOMING)
+        print("  Homing started (controlword = 0x001F).")
+    except MotionMasterError as exc:
+        print(f"  ERROR writing controlword to start homing: {exc}", file=sys.stderr)
+        return False
+
+    deadline = time.time() + HOMING_TIMEOUT_S
+    homed = False
+    while time.time() < deadline:
+        time.sleep(0.1)
+        try:
+            result = device.upload_parameter(STATUSWORD_INDEX, STATUSWORD_SUBINDEX)
+            sw = int(result.get("value", result) if isinstance(result, dict) else result)
+        except MotionMasterError as exc:
+            print(f"  ERROR reading statusword: {exc}", file=sys.stderr)
+            return False
+        if sw & SW_HOMING_ERROR:
+            print(f"  ERROR: homing error bit set in statusword (0x{sw:04X}).", file=sys.stderr)
+            return False
+        if sw & SW_HOMING_ATTAINED:
+            print(f"  Homing attained (statusword = 0x{sw:04X}).")
+            homed = True
+            break
+
+    if not homed:
+        print(f"  ERROR: homing timed out after {HOMING_TIMEOUT_S:.0f}s.", file=sys.stderr)
+        return False
+
+    try:
+        device.download_parameter(CONTROLWORD_INDEX, CONTROLWORD_SUBINDEX, CW_ENABLE_OP)
+    except MotionMasterError as exc:
+        print(f"  ERROR clearing homing start bit: {exc}", file=sys.stderr)
+        return False
+
+    try:
+        result = device.upload_parameter(POS_ACTUAL_INDEX, POS_ACTUAL_SUBINDEX)
+        pos = int(result.get("value", result) if isinstance(result, dict) else result)
+        print(f"  Position actual value ({POS_ACTUAL_INDEX}) = {pos}")
+        if abs(pos) > POS_NEAR_ZERO_COUNTS:
+            print(f"  WARNING: position {pos} is not near zero — homing may not have worked correctly.",
+                  file=sys.stderr)
+        else:
+            print("  Position is near zero — homing successful.")
+    except MotionMasterError as exc:
+        print(f"  ERROR reading position actual value: {exc}", file=sys.stderr)
+        return False
+
+    return True
 
 
 def process_device(device, label: str, dry_run: bool) -> bool:
@@ -189,6 +282,10 @@ def process_device(device, label: str, dry_run: bool) -> bool:
 
     print(f"  encoder-2 raw after offset = {raw_after}"
           + (" (WARNING: still 0 after retries)" if raw_after == 0 else ""))
+
+    print("  Starting homing procedure...")
+    if not perform_homing(device):
+        return False
 
     return True
 
