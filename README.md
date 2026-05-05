@@ -167,6 +167,59 @@ finally:
     system.disconnect()
 ```
 
+## Examples
+
+### `read_write_object.py` — read or write any object-dictionary entry
+
+```bash
+# Read 0x6064:00 (position actual value) from device at EtherCAT position 3
+pixi run python examples/read_write_object.py --devices 3 --index 0x6064 --subindex 0x00
+
+# Write homing method 37 to 0x6098:00 on devices at positions 1 and 2
+pixi run python examples/read_write_object.py --devices 1 2 --index 0x6098 --subindex 0x00 --write 37
+
+# Read from all connected devices
+pixi run python examples/read_write_object.py --index 0x1018 --subindex 0x01
+
+# Write and save to NVM
+pixi run python examples/read_write_object.py --devices 1 --index 0x6098 --subindex 0x00 --write 37 --save
+```
+
+### `set_encoder2_offset.py` — set encoder-2 single-turn offset and run homing
+
+```bash
+# Set offset on all connected devices
+pixi run python examples/set_encoder2_offset.py
+
+# Set offset on a remote Motion Master instance
+pixi run python examples/set_encoder2_offset.py --url http://192.168.1.100:63526/api
+
+# Dry run — print calculated offsets without writing anything
+pixi run python examples/set_encoder2_offset.py --dry-run
+
+# Read and display current offsets only
+pixi run python examples/set_encoder2_offset.py --read-offsets
+
+# Clear (zero) the offset on all devices
+pixi run python examples/set_encoder2_offset.py --clear-offsets
+
+# Target only devices at EtherCAT positions 3, 5 and 7
+pixi run python examples/set_encoder2_offset.py --devices 3 5 7
+```
+
+### `copy_smm_config.py` — copy SMM safety configuration between devices
+
+```bash
+# Copy SMM config from device at position 3 to devices at positions 27, 28, 29
+pixi run python examples/copy_smm_config.py --source 3 --targets 27 28 29
+
+# Save the generated CSV for inspection before pushing
+pixi run python examples/copy_smm_config.py --source 3 --targets 27 28 --save smm_snapshot.csv
+
+# Exclude the FSoE safe address so each target keeps its own address
+pixi run python examples/copy_smm_config.py --source 3 --targets 27 28 29 --skip-address
+```
+
 ## Full method reference
 
 ### System
