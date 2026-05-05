@@ -68,6 +68,7 @@ CONTROLWORD_INDEX      = "0x6040"
 CONTROLWORD_SUBINDEX   = "0x00"
 CW_ENABLE_OP           = 0x000F     # enable operation (bits 0-3)
 CW_START_HOMING        = 0x001F     # enable op + start homing (bit 4)
+CW_DISABLE             = 0x0006     # shutdown → Ready to Switch On (drive disabled)
 
 STATUSWORD_INDEX       = "0x6041"
 STATUSWORD_SUBINDEX    = "0x00"
@@ -207,6 +208,13 @@ def perform_homing(device) -> bool:
             print("  Position is near zero — homing successful.")
     except MotionMasterError as exc:
         print(f"  ERROR reading position actual value: {exc}", file=sys.stderr)
+        return False
+
+    try:
+        device.download_parameter(CONTROLWORD_INDEX, CONTROLWORD_SUBINDEX, CW_DISABLE)
+        print("  Drive disabled (controlword = 0x0006).")
+    except MotionMasterError as exc:
+        print(f"  ERROR disabling drive: {exc}", file=sys.stderr)
         return False
 
     return True
