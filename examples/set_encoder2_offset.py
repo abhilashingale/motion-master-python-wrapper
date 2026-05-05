@@ -30,6 +30,8 @@ Usage
 
 import argparse
 import sys
+import time
+from time import sleep
 
 from motion_master import MotionMasterError, System
 
@@ -140,6 +142,9 @@ def process_device(device, label: str, dry_run: bool) -> bool:
 
     try:
         device.download_parameter(ENC2_OFFSET_INDEX, ENC2_OFFSET_SUBINDEX, offset)
+        # test delay to ensure offset is written before read-back (may not be necessary, but just in case)
+        sleep(1)  # small delay to ensure parameter is written before read-back
+        print("  single-turn offset written to device.")
     except MotionMasterError as exc:
         print(f"  ERROR writing single-turn offset: {exc}", file=sys.stderr)
         return False
@@ -162,12 +167,27 @@ def process_device(device, label: str, dry_run: bool) -> bool:
         return False
 
     try:
-        result = device.upload_parameter(ENC2_RAW_INDEX, ENC2_RAW_SUBINDEX)
-        raw_after = result.get("value", result) if isinstance(result, dict) else result
-        print(f"  encoder-2 raw after offset = {raw_after}")
+        device.force_on_demand_parameters_update()
+        print("  On-demand parameters update triggered.")
     except MotionMasterError as exc:
-        print(f"  ERROR reading encoder-2 raw after offset: {exc}", file=sys.stderr)
+        print(f"  ERROR triggering parameters update: {exc}", file=sys.stderr)
         return False
+
+    raw_after = 0
+    for _ in range(10):
+        time.sleep(0.2)
+        try:
+            result = device.upload_parameter(ENC2_RAW_INDEX, ENC2_RAW_SUBINDEX)
+            raw_after = result.get("value", result) if isinstance(result, dict) else result
+            raw_after = int(raw_after)
+        except MotionMasterError as exc:
+            print(f"  ERROR reading encoder-2 raw after offset: {exc}", file=sys.stderr)
+            return False
+        if raw_after != 0:
+            break
+
+    print(f"  encoder-2 raw after offset = {raw_after}"
+          + (" (WARNING: still 0 after retries)" if raw_after == 0 else ""))
 
     return True
 
