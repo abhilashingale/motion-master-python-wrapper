@@ -217,6 +217,9 @@ def perform_homing(device) -> bool:
         print(f"  ERROR disabling drive: {exc}", file=sys.stderr)
         return False
 
+    if not store_parameters(device):
+        return False
+
     return True
 
 
