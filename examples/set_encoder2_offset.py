@@ -90,6 +90,7 @@ def clear_offset(device) -> bool:
     """Write 0 to the single-turn offset and save config."""
     try:
         device.download_parameter(ENC2_OFFSET_INDEX, ENC2_OFFSET_SUBINDEX, 0)
+        sleep(1)
         print("  single-turn offset cleared (set to 0).")
     except MotionMasterError as exc:
         print(f"  ERROR clearing offset: {exc}", file=sys.stderr)
@@ -204,7 +205,7 @@ def main() -> None:
         print(f"Connected to Motion Master at {args.url}\n")
 
         if args.devices:
-            targets = [(pos, f"position {pos}") for pos in args.devices]
+            targets = [(pos, f"EtherCAT position {pos}") for pos in args.devices]
         else:
             all_devices = system.get_devices()
             if not all_devices:
@@ -212,7 +213,7 @@ def main() -> None:
                 return
             targets = [
                 (dev.get("deviceAddress") or dev.get("serialNumber"),
-                 dev.get("serialNumber", str(dev.get("deviceAddress"))))
+                 f"EtherCAT position {dev.get('deviceAddress', 'unknown')}")
                 for dev in all_devices
             ]
 
